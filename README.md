@@ -6,3 +6,11 @@ For apply migrations to specified database that no exists you need follow this s
 3. Open Package Manager, select "Default project" as TriviaGameAPI.DAL and input Update-Database 
 4. Return TriviaGameAPI as "Startup Project"
 
+Test client have this working things:
+- Connect
+- Join to room
+- Leave from room
+- Send message (hardcode message with sender ConnectionId and sent date)
+
+Other GUI items not working (at the moment)
+
