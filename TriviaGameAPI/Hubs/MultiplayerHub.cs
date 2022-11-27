@@ -13,8 +13,6 @@ namespace TriviaGameAPI.Hubs
         private readonly ILogger<MultiplayerHub> _logger;
         private readonly TriviaGameDBContext _dbContext;
 
-        private GameplayRoom? _gameplayRoom;
-
         public MultiplayerHub(ILogger<MultiplayerHub> logger, TriviaGameDBContext dBContext)
         {
             _logger = logger;
@@ -31,8 +29,9 @@ namespace TriviaGameAPI.Hubs
                 player = new Player
                 {
                     ConnectionId = Context.ConnectionId,
+                    Name = Guid.NewGuid().ToString(),
                     CharacterColor = characterColor,
-                    IsGameOrganizer = true,
+                    IsGameOrganizer = availableRoom == null,
                     LastGameDate = DateTime.UtcNow,
                 };
 
@@ -50,8 +49,6 @@ namespace TriviaGameAPI.Hubs
 
             availableRoom.Players.Add(player);
 
-            _gameplayRoom = availableRoom;
-
             await _dbContext.SaveChangesAsync();
 
             await OpponentJoined(player.Name, characterColor, player.IsGameOrganizer);
@@ -60,59 +57,68 @@ namespace TriviaGameAPI.Hubs
                 await CanPlay();
         }
 
-        public Task Send(string jsonData)
+        public async Task Send(string jsonData)
         {
-            if (_gameplayRoom != null)
-                return Clients.Clients(_gameplayRoom.Players.Where(p => p.ConnectionId != Context.ConnectionId).Select(p => p.ConnectionId!).ToList())
-                    .SendAsync(nameof(Send), jsonData);
-            else
-                return Task.CompletedTask;
+            var gameplayRoom = await GetGameplayRoom();
+
+            if (gameplayRoom != null)
+                await Clients.Clients(gameplayRoom.Players.Where(p => p.ConnectionId != Context.ConnectionId).Select(p => p.ConnectionId!).ToList())
+                   .SendAsync(nameof(Send), jsonData);
         }
 
         public async Task Leave()
         {
-            if (_gameplayRoom == null)
+            var gameplayRoom = await GetGameplayRoom();
+
+            if (gameplayRoom == null)
                 return;
 
-            var player = _dbContext.Players.First(p => p.ConnectionId == Context.ConnectionId);
+            var player = gameplayRoom.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
 
+            if (player == null)
+                return;
+
+            await OpponentLeave();
             if (player.IsGameOrganizer)
             {
-                _gameplayRoom.Players.Clear();
-                _dbContext.GameplayRooms.Remove(_gameplayRoom);
+                player.IsGameOrganizer = false;
+                gameplayRoom.Players.Clear();
+                _dbContext.GameplayRooms.Remove(gameplayRoom);
             }
             else
-                _gameplayRoom.Players.Remove(player);
+                gameplayRoom.Players.Remove(player);
 
             await _dbContext.SaveChangesAsync();
-            await OpponentLeave();
         }
 
-        public Task OpponentJoined(string name, string characterColor, bool isGameOrganizer)
+        public async Task OpponentJoined(string name, string characterColor, bool isGameOrganizer)
         {
-            if (_gameplayRoom != null)
-                return Clients.Clients(_gameplayRoom.Players.Select(p => p.ConnectionId!).ToList())
+            var gameplayRoom = await GetGameplayRoom();
+
+            if (gameplayRoom != null)
+                await Clients.Clients(gameplayRoom.Players.Select(p => p.ConnectionId!).ToList())
                     .SendAsync(nameof(OpponentJoined), name, characterColor, isGameOrganizer);
-            else
-                return Task.CompletedTask;
         }
 
-        public Task CanPlay()
+        public async Task CanPlay()
         {
-            if (_gameplayRoom != null)
-                return Clients.Clients(_gameplayRoom.Players.Select(p => p.ConnectionId!).ToList())
+            var gameplayRoom = await GetGameplayRoom();
+
+            if (gameplayRoom != null)
+                await Clients.Clients(gameplayRoom.Players.Select(p => p.ConnectionId!).ToList())
                     .SendAsync(nameof(CanPlay));
-            else
-                return Task.CompletedTask;
         }
 
-        public Task OpponentLeave()
+        public async Task OpponentLeave()
         {
-            if (_gameplayRoom != null)
-                return Clients.Clients(_gameplayRoom.Players.Where(p => p.ConnectionId != Context.ConnectionId).Select(p => p.ConnectionId!).ToList())
+            var gameplayRoom = await GetGameplayRoom();
+
+            if (gameplayRoom != null)
+            {
+                var clients = Clients.Clients(gameplayRoom.Players.Where(p => p.ConnectionId != Context.ConnectionId).Select(p => p.ConnectionId!).ToList());
+                await clients
                     .SendAsync(nameof(OpponentLeave));
-            else
-                return Task.CompletedTask;
+            }
         }
 
         public async override Task OnDisconnectedAsync(Exception? exception)
@@ -123,6 +129,24 @@ namespace TriviaGameAPI.Hubs
             await Leave();
 
             await base.OnDisconnectedAsync(exception);
+        }
+
+        //Fix this!!
+        //It could be moved to in-memory chahe (ASP.NET build-in in-memory chache, Redis whatever)
+        private async Task<GameplayRoom?> GetGameplayRoom()
+        {
+            var player = await _dbContext.Players.FirstOrDefaultAsync(p => p.ConnectionId == Context.ConnectionId);
+            if (player == null)
+                return null;
+
+            var gamePlayeRoom = await _dbContext.GameplayRooms.FirstOrDefaultAsync(gr => gr.Players.FirstOrDefault(p => p.Id == player.Id) != null);
+
+            if (gamePlayeRoom != null)
+                _dbContext.GameplayRooms.Entry(gamePlayeRoom)
+                        .Collection(g => g.Players)
+                        .Load();
+
+            return gamePlayeRoom;
         }
 
         protected override void Dispose(bool disposing)

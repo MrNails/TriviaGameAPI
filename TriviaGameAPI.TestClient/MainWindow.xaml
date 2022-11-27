@@ -8,7 +8,8 @@
         Title="Trivia game test client" 
         Height="450" Width="800"
         MinHeight="450" MinWidth="800"
-        FontSize="16">
+        FontSize="16"
+        Closing="Window_Closing">
     <Window.Resources>
         
     </Window.Resources>
@@ -17,15 +18,22 @@
                     Width="220">
             <TextBlock Text="Trivia Game" FontSize="20"
                        HorizontalAlignment="Center"/>
+            <Button x:Name="ConnectButton" 
+                    Content="Connect"
+                    Padding="3" Width="200"
+                    Margin="5" Tag="1"
+                    Click="ConnectButton_Click"/>
             <Button x:Name="MainGameButton" 
                     Content="Find game"
                     Padding="3" Width="200"
-                    Margin="5"
-                    Click="MainGameButton_Click"/>
+                    Margin="5" Tag="1"
+                    Click="MainGameButton_Click"
+                    IsEnabled="False"/>
             <Button x:Name="ShowLeaderBoardButton" 
                     Content="Show leaderboarder"
                     Padding="3" Width="200"
-                    Margin="5"/>
+                    Margin="5"
+                    IsEnabled="false"/>
         </StackPanel>
         
         <DockPanel x:Name="PlayersDataDockPanel" 
@@ -57,7 +65,8 @@
             <Button Grid.Row="2" 
                     Content="Send answer" 
                     Margin="5" Padding="2"
-                    Width="200"/>
+                    Width="200"
+                    Click="Button_Click"/>
         </Grid>
     </DockPanel>
 </Window>
